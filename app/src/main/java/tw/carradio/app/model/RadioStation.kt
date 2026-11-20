@@ -27,7 +27,10 @@ data class RadioStation(
     val techBadge: String
         get() {
             val parts = mutableListOf<String>()
-            if (codec.isNotBlank()) parts.add(codec.uppercase())
+            val cleanCodec = codec.trim().uppercase()
+            if (cleanCodec.isNotBlank() && cleanCodec != "UNKNOWN") {
+                parts.add(cleanCodec)
+            }
             if (bitrate > 0) parts.add("${bitrate}k")
             if (isHls || streamUrl.contains(".m3u8", ignoreCase = true)) parts.add("HLS")
             return if (parts.isEmpty()) "LIVE" else parts.joinToString(" · ")

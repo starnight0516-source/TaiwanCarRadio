@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 網路串流與背景播放權限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -19,7 +18,6 @@
         android:theme="@style/Theme.TaiwanCarRadio"
         android:usesCleartextTraffic="true">
 
-        <!-- 主畫面：支援車機橫屏與手機直屏自適應，避免旋轉時重建導致斷線 -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
@@ -31,7 +29,6 @@
             </intent-filter>
         </activity>
 
-        <!-- 背景廣播播放服務（支援車機背景切換導航、鎖屏、方向盤多媒體按鍵） -->
         <service
             android:name=".service.RadioPlaybackService"
             android:exported="true"
@@ -42,7 +39,6 @@
             </intent-filter>
         </service>
 
-        <!-- 車機開機自動續播（需於 App 內開啟設定） -->
         <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"

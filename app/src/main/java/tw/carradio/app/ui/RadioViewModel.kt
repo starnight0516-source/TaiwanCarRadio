@@ -5,6 +5,7 @@ import android.content.ComponentName
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -74,15 +75,23 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             val matched = _uiState.value.allStations.firstOrNull { it.id == mediaId }
             if (matched != null) {
                 repository.saveLastStationId(matched.id)
-                _uiState.update { it.copy(currentStation = matched) }
+                _uiState.update { it.copy(currentStation = matched, statusMessage = null) }
             }
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val detail = when (error.errorCode) {
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "網路連線逾時，正在重連…"
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "該電台來源暫時無回應（HTTP 錯誤）"
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                PlaybackException.ERROR_CODE_DECODING_FAILED -> "該電台串流格式不相容"
+                else -> "串流訊號不穩（${error.errorCodeName}），正在重連…"
+            }
             _uiState.update {
                 it.copy(
                     playbackStatus = PlaybackStatus.RECONNECTING,
-                    statusMessage = "串流訊號不穩，正在自動重連…"
+                    statusMessage = detail
                 )
             }
         }
@@ -226,26 +235,51 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(autoResumeOnBoot = enabled) }
     }
 
+    private fun RadioStation.toMediaItem(): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(id)
+            .setUri(streamUrl)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(name)
+                    .setArtist("台灣車機廣播 · ${category.label}")
+                    .build()
+            )
+            .build()
+
+    /**
+     * v1.1 換台核心修正：
+     * 1. 先 stop() + clearMediaItems() 徹底釋放舊串流緩衝與 HTTP 連線。
+     * 2. 僅傳遞「上一台／目前／下一台」3 筆輕量清單（避免 200+ 筆清單造成車機 Binder IPC 過載或卡死），
+     *    同時保有方向盤上一首／下一首原生支援。
+     * 3. 起始位置改用 C.TIME_UNSET，讓直播串流直接從最新 live edge 開始播放。
+     */
     fun playStation(station: RadioStation) {
         val controller = mediaController ?: return
         repository.saveLastStationId(station.id)
 
         val queue = _uiState.value.filteredStations.ifEmpty { _uiState.value.allStations }
-        val targetIndex = queue.indexOfFirst { it.id == station.id }.coerceAtLeast(0)
-        val mediaItems = queue.map { st ->
-            MediaItem.Builder()
-                .setMediaId(st.id)
-                .setUri(st.streamUrl)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(st.name)
-                        .setArtist("台灣車機廣播 · ${st.category.label}")
-                        .build()
-                )
-                .build()
+        val idx = queue.indexOfFirst { it.id == station.id }
+
+        val windowItems = mutableListOf<MediaItem>()
+        val startIndex: Int
+        if (queue.size >= 2 && idx >= 0) {
+            val prev = queue[(idx - 1 + queue.size) % queue.size]
+            val next = queue[(idx + 1) % queue.size]
+            windowItems.add(prev.toMediaItem())
+            windowItems.add(station.toMediaItem())
+            if (next.id != prev.id) {
+                windowItems.add(next.toMediaItem())
+            }
+            startIndex = 1
+        } else {
+            windowItems.add(station.toMediaItem())
+            startIndex = 0
         }
 
-        controller.setMediaItems(mediaItems, targetIndex, 0L)
+        controller.stop()
+        controller.clearMediaItems()
+        controller.setMediaItems(windowItems, startIndex, C.TIME_UNSET)
         controller.prepare()
         controller.play()
 
@@ -262,9 +296,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         val controller = mediaController ?: return
         if (controller.isPlaying || controller.playbackState == Player.STATE_BUFFERING) {
             controller.pause()
-        } else if (controller.currentMediaItem != null) {
-            controller.prepare()
-            controller.play()
         } else {
             val target = _uiState.value.currentStation
                 ?: _uiState.value.filteredStations.firstOrNull()

@@ -1,6 +1,5 @@
 package tw.carradio.app.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -97,14 +97,16 @@ fun CarRadioScreen(
     onAutoResumeChange: (Boolean) -> Unit
 ) {
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
-        configuration.screenWidthDp >= 720
+    // 僅在真正「寬 > 高」的橫屏車機使用左右雙欄；直立大螢幕車機自動切換上下排版
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding(),
         color = BgDark
     ) {
         if (isLandscape) {
@@ -114,7 +116,7 @@ fun CarRadioScreen(
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                NowPlayingPanel(
+                LandscapeNowPlayingPanel(
                     uiState = uiState,
                     onTogglePlayPause = onTogglePlayPause,
                     onNext = onNext,
@@ -141,13 +143,14 @@ fun CarRadioScreen(
                 )
             }
         } else {
+            // 直立大螢幕車機／手機：上方精簡控制面板＋下方 2 欄電台卡片（底部預留車機 Dock 安全邊距）
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                NowPlayingPanel(
+                PortraitNowPlayingHeader(
                     uiState = uiState,
                     onTogglePlayPause = onTogglePlayPause,
                     onNext = onNext,
@@ -165,7 +168,7 @@ fun CarRadioScreen(
                     onPlayStation = onPlayStation,
                     onToggleFavorite = onToggleFavorite,
                     onDeleteCustomStation = onDeleteCustomStation,
-                    gridColumns = 1,
+                    gridColumns = if (configuration.screenWidthDp >= 520) 2 else 1,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -197,7 +200,171 @@ fun CarRadioScreen(
 }
 
 @Composable
-private fun NowPlayingPanel(
+private fun PortraitNowPlayingHeader(
+    uiState: RadioUiState,
+    onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onOpenAddDialog: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val current = uiState.currentStation
+    val isFav = current != null && current.id in uiState.favoriteIds
+
+    Surface(
+        modifier = modifier,
+        color = PanelDark,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF2B3442))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 第一列：品牌名稱 + 狀態標籤 + 完整工具按鈕（不擠壓）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Radio,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "台灣車機廣播",
+                        color = TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    StatusPill(uiState.playbackStatus)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IconButton(onClick = onRefresh) {
+                        if (uiState.isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = AccentCyan
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, "更新清單", tint = TextSecondary)
+                        }
+                    }
+                    IconButton(onClick = onOpenAddDialog) {
+                        Icon(Icons.Default.Add, "新增自訂電台", tint = TextSecondary)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, "設定", tint = TextSecondary)
+                    }
+                }
+            }
+
+            // 第二列：左方目前播放電台資訊 + 右方大控制鍵
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = current?.name ?: "請由下方選擇電台",
+                        color = TextPrimary,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = current?.let { "${it.category.label} · ${it.techBadge}" }
+                            ?: "支援背景播放與方向盤切台",
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!uiState.statusMessage.isNullOrBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = uiState.statusMessage,
+                            color = AccentAmber,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (current != null) {
+                        Surface(
+                            onClick = { onToggleFavorite(current.id) },
+                            shape = CircleShape,
+                            color = if (isFav) Color(0xFF3A2D0B) else CardDark,
+                            modifier = Modifier.size(54.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = "收藏",
+                                    tint = if (isFav) AccentAmber else TextPrimary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                    }
+                    Surface(
+                        onClick = onPrevious,
+                        shape = CircleShape,
+                        color = CardDark,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(32.dp))
+                        }
+                    }
+                    Surface(
+                        onClick = onTogglePlayPause,
+                        shape = CircleShape,
+                        color = AccentCyan,
+                        modifier = Modifier.size(70.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            PlayButtonContent(uiState.playbackStatus, iconSize = 38)
+                        }
+                    }
+                    Surface(
+                        onClick = onNext,
+                        shape = CircleShape,
+                        color = CardDark,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LandscapeNowPlayingPanel(
     uiState: RadioUiState,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -296,7 +463,7 @@ private fun NowPlayingPanel(
                         text = uiState.statusMessage,
                         color = AccentAmber,
                         fontSize = 13.sp,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -314,12 +481,7 @@ private fun NowPlayingPanel(
                     modifier = Modifier.size(68.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "上一台",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(38.dp)
-                        )
+                        Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(38.dp))
                     }
                 }
 
@@ -330,33 +492,7 @@ private fun NowPlayingPanel(
                     modifier = Modifier.size(88.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        when (uiState.playbackStatus) {
-                            PlaybackStatus.BUFFERING, PlaybackStatus.RECONNECTING -> {
-                                CircularProgressIndicator(
-                                    color = BgDark,
-                                    strokeWidth = 4.dp,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            }
-
-                            PlaybackStatus.PLAYING -> {
-                                Icon(
-                                    imageVector = Icons.Default.Pause,
-                                    contentDescription = "暫停",
-                                    tint = BgDark,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                            }
-
-                            else -> {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "播放",
-                                    tint = BgDark,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                            }
-                        }
+                        PlayButtonContent(uiState.playbackStatus, iconSize = 48)
                     }
                 }
 
@@ -367,12 +503,7 @@ private fun NowPlayingPanel(
                     modifier = Modifier.size(68.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "下一台",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(38.dp)
-                        )
+                        Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(38.dp))
                     }
                 }
             }
@@ -408,13 +539,32 @@ private fun NowPlayingPanel(
 }
 
 @Composable
+private fun PlayButtonContent(status: PlaybackStatus, iconSize: Int) {
+    when (status) {
+        PlaybackStatus.BUFFERING, PlaybackStatus.RECONNECTING -> {
+            CircularProgressIndicator(
+                color = BgDark,
+                strokeWidth = 4.dp,
+                modifier = Modifier.size((iconSize - 10).dp)
+            )
+        }
+        PlaybackStatus.PLAYING -> {
+            Icon(Icons.Default.Pause, "暫停", tint = BgDark, modifier = Modifier.size(iconSize.dp))
+        }
+        else -> {
+            Icon(Icons.Default.PlayArrow, "播放", tint = BgDark, modifier = Modifier.size(iconSize.dp))
+        }
+    }
+}
+
+@Composable
 private fun StatusPill(status: PlaybackStatus) {
     val (label, dotColor) = when (status) {
-        PlaybackStatus.PLAYING -> "● 即時直播中（背景播放就緒）" to LiveGreen
-        PlaybackStatus.BUFFERING -> "● 緩衝連線中…" to AccentCyan
-        PlaybackStatus.RECONNECTING -> "● 訊號重連中…" to AccentAmber
+        PlaybackStatus.PLAYING -> "● 直播中" to LiveGreen
+        PlaybackStatus.BUFFERING -> "● 連線中…" to AccentCyan
+        PlaybackStatus.RECONNECTING -> "● 重連中…" to AccentAmber
         PlaybackStatus.PAUSED -> "● 已暫停" to TextSecondary
-        PlaybackStatus.IDLE -> "● 待命中" to TextSecondary
+        PlaybackStatus.IDLE -> "● 待命" to TextSecondary
     }
     Surface(
         color = Color(0xFF212834),
@@ -425,7 +575,7 @@ private fun StatusPill(status: PlaybackStatus) {
             color = dotColor,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
         )
     }
 }
@@ -443,7 +593,7 @@ private fun StationBrowserPanel(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         OutlinedTextField(
             value = uiState.searchQuery,
@@ -522,7 +672,8 @@ private fun StationBrowserPanel(
                 columns = GridCells.Fixed(gridColumns),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 12.dp),
+                // 底部預留 72dp 避開各廠牌車機常駐底部工具列
+                contentPadding = PaddingValues(bottom = 72.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(uiState.filteredStations, key = { it.id }) { station ->
@@ -562,13 +713,13 @@ private fun StationCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(92.dp)
+            .height(90.dp)
             .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -676,7 +827,7 @@ private fun SettingsDialog(
         containerColor = PanelDark,
         titleContentColor = TextPrimary,
         textContentColor = TextPrimary,
-        title = { Text("車機播放設定", fontWeight = FontWeight.Bold) },
+        title = { Text("車機播放設定（v1.1.0）", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(

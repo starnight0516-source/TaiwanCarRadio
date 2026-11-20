@@ -17,7 +17,6 @@ class RadioRepository(private val context: Context) {
     private val prefs = context.getSharedPreferences("tw_car_radio_prefs", Context.MODE_PRIVATE)
     private val cacheFile = File(context.filesDir, "tw_stations_cache.json")
 
-    // Radio Browser 公開免費分散式節點（無需 API Key，自動容錯切換）
     private val apiMirrors = listOf(
         "https://de1.api.radio-browser.info",
         "https://nl1.api.radio-browser.info",
@@ -63,8 +62,6 @@ class RadioRepository(private val context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_RESUME_BOOT, enabled).apply()
     }
 
-    fun getLastSyncTime(): Long = prefs.getLong(KEY_LAST_SYNC_TIME, 0L)
-
     fun getCustomStations(): List<RadioStation> {
         val raw = prefs.getString(KEY_CUSTOM_STATIONS, "[]") ?: "[]"
         return runCatching {
@@ -79,7 +76,7 @@ class RadioRepository(private val context: Context) {
                     name = name,
                     streamUrl = url,
                     tags = obj.optString("tags", "自訂串流"),
-                    codec = if (url.contains(".m3u8", true)) "HLS" else "STREAM",
+                    codec = if (url.contains(".m3u8", true)) "HLS" else "LIVE",
                     isHls = url.contains(".m3u8", true),
                     isCustom = true,
                     category = StationCategory.CUSTOM
@@ -97,7 +94,7 @@ class RadioRepository(private val context: Context) {
                 name = name.trim(),
                 streamUrl = streamUrl.trim(),
                 tags = "自訂串流",
-                codec = if (streamUrl.contains(".m3u8", true)) "HLS" else "STREAM",
+                codec = if (streamUrl.contains(".m3u8", true)) "HLS" else "LIVE",
                 isHls = streamUrl.contains(".m3u8", true),
                 isCustom = true,
                 category = StationCategory.CUSTOM
@@ -148,7 +145,7 @@ class RadioRepository(private val context: Context) {
                         requestMethod = "GET"
                         connectTimeout = 8000
                         readTimeout = 12000
-                        setRequestProperty("User-Agent", "TaiwanCarRadio/1.0 (Android Car HeadUnit)")
+                        setRequestProperty("User-Agent", "TaiwanCarRadio/1.1 (Android Car HeadUnit)")
                         setRequestProperty("Accept", "application/json")
                     }
                     try {
