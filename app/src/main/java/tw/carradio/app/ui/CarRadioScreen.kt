@@ -212,10 +212,10 @@ fun CarRadioScreen(
                                 Icon(Icons.Default.Refresh, "更新電台", tint = TextSecondary)
                             }
                         }
-                        IconButton(onClick = onOpenAddDialog) {
+                        IconButton(onClick = { showAddDialog = true }) {
                             Icon(Icons.Default.Add, "新增自訂電台", tint = TextSecondary)
                         }
-                        IconButton(onClick = onOpenSettings) {
+                        IconButton(onClick = { showSettingsDialog = true }) {
                             Icon(Icons.Default.Settings, "設定", tint = TextSecondary)
                         }
                     }
