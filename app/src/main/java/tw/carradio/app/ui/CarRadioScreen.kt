@@ -1,0 +1,723 @@
+package tw.carradio.app.ui
+
+import android.content.res.Configuration
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import tw.carradio.app.model.RadioStation
+import tw.carradio.app.model.StationCategory
+
+private val BgDark = Color(0xFF0D1117)
+private val PanelDark = Color(0xFF161B22)
+private val CardDark = Color(0xFF1F2733)
+private val CardActive = Color(0xFF13334C)
+private val AccentCyan = Color(0xFF00D2FF)
+private val AccentAmber = Color(0xFFFFB300)
+private val TextPrimary = Color(0xFFF0F6FC)
+private val TextSecondary = Color(0xFF8B949E)
+private val LiveGreen = Color(0xFF2EA043)
+
+@Composable
+fun CarRadioScreen(
+    uiState: RadioUiState,
+    onPlayStation: (RadioStation) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onSelectCategory: (StationCategory) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onAddCustomStation: (String, String) -> Unit,
+    onDeleteCustomStation: (String) -> Unit,
+    onKeepScreenOnChange: (Boolean) -> Unit,
+    onAutoResumeChange: (Boolean) -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+        configuration.screenWidthDp >= 720
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = BgDark
+    ) {
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                NowPlayingPanel(
+                    uiState = uiState,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onToggleFavorite = onToggleFavorite,
+                    onRefresh = onRefresh,
+                    onOpenAddDialog = { showAddDialog = true },
+                    onOpenSettings = { showSettingsDialog = true },
+                    modifier = Modifier
+                        .weight(0.38f)
+                        .fillMaxHeight()
+                )
+                StationBrowserPanel(
+                    uiState = uiState,
+                    onSelectCategory = onSelectCategory,
+                    onSearchChange = onSearchChange,
+                    onPlayStation = onPlayStation,
+                    onToggleFavorite = onToggleFavorite,
+                    onDeleteCustomStation = onDeleteCustomStation,
+                    gridColumns = if (configuration.screenWidthDp >= 1000) 3 else 2,
+                    modifier = Modifier
+                        .weight(0.62f)
+                        .fillMaxHeight()
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                NowPlayingPanel(
+                    uiState = uiState,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onToggleFavorite = onToggleFavorite,
+                    onRefresh = onRefresh,
+                    onOpenAddDialog = { showAddDialog = true },
+                    onOpenSettings = { showSettingsDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                StationBrowserPanel(
+                    uiState = uiState,
+                    onSelectCategory = onSelectCategory,
+                    onSearchChange = onSearchChange,
+                    onPlayStation = onPlayStation,
+                    onToggleFavorite = onToggleFavorite,
+                    onDeleteCustomStation = onDeleteCustomStation,
+                    gridColumns = 1,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddCustomStationDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, url ->
+                onAddCustomStation(name, url)
+                showAddDialog = false
+            }
+        )
+    }
+
+    if (showSettingsDialog) {
+        SettingsDialog(
+            keepScreenOn = uiState.keepScreenOn,
+            autoResumeOnBoot = uiState.autoResumeOnBoot,
+            stationCount = uiState.allStations.size,
+            onKeepScreenOnChange = onKeepScreenOnChange,
+            onAutoResumeChange = onAutoResumeChange,
+            onDismiss = { showSettingsDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun NowPlayingPanel(
+    uiState: RadioUiState,
+    onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onOpenAddDialog: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val current = uiState.currentStation
+    val isFav = current != null && current.id in uiState.favoriteIds
+
+    Surface(
+        modifier = modifier,
+        color = PanelDark,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF2B3442))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Radio,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "台灣車機廣播",
+                        color = TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onRefresh) {
+                        if (uiState.isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = AccentCyan
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, "更新清單", tint = TextSecondary)
+                        }
+                    }
+                    IconButton(onClick = onOpenAddDialog) {
+                        Icon(Icons.Default.Add, "新增自訂電台", tint = TextSecondary)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, "設定", tint = TextSecondary)
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                StatusPill(uiState.playbackStatus)
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = current?.name ?: "請由右側選擇電台",
+                    color = TextPrimary,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = current?.let { "${it.category.label}  ·  ${it.techBadge}" }
+                        ?: "支援背景播放與方向盤切台",
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!uiState.statusMessage.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = uiState.statusMessage,
+                        color = AccentAmber,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    onClick = onPrevious,
+                    shape = CircleShape,
+                    color = CardDark,
+                    modifier = Modifier.size(68.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "上一台",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = onTogglePlayPause,
+                    shape = CircleShape,
+                    color = AccentCyan,
+                    modifier = Modifier.size(88.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        when (uiState.playbackStatus) {
+                            PlaybackStatus.BUFFERING, PlaybackStatus.RECONNECTING -> {
+                                CircularProgressIndicator(
+                                    color = BgDark,
+                                    strokeWidth = 4.dp,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            PlaybackStatus.PLAYING -> {
+                                Icon(
+                                    imageVector = Icons.Default.Pause,
+                                    contentDescription = "暫停",
+                                    tint = BgDark,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "播放",
+                                    tint = BgDark,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    onClick = onNext,
+                    shape = CircleShape,
+                    color = CardDark,
+                    modifier = Modifier.size(68.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "下一台",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+                }
+            }
+
+            if (current != null) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { onToggleFavorite(current.id) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isFav) Color(0xFF3A2D0B) else CardDark,
+                        contentColor = if (isFav) AccentAmber else TextPrimary
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (isFav) "已加入我的最愛" else "加入我的最愛",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(status: PlaybackStatus) {
+    val (label, dotColor) = when (status) {
+        PlaybackStatus.PLAYING -> "● 即時直播中（背景播放就緒）" to LiveGreen
+        PlaybackStatus.BUFFERING -> "● 緩衝連線中…" to AccentCyan
+        PlaybackStatus.RECONNECTING -> "● 訊號重連中…" to AccentAmber
+        PlaybackStatus.PAUSED -> "● 已暫停" to TextSecondary
+        PlaybackStatus.IDLE -> "● 待命中" to TextSecondary
+    }
+    Surface(
+        color = Color(0xFF212834),
+        shape = RoundedCornerShape(50)
+    ) {
+        Text(
+            text = label,
+            color = dotColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun StationBrowserPanel(
+    uiState: RadioUiState,
+    onSelectCategory: (StationCategory) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onPlayStation: (RadioStation) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onDeleteCustomStation: (String) -> Unit,
+    gridColumns: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedTextField(
+            value = uiState.searchQuery,
+            onValueChange = onSearchChange,
+            singleLine = true,
+            placeholder = {
+                Text("搜尋電台（例如：警廣、飛碟、ICRT、HitFM、中廣）", color = TextSecondary)
+            },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = AccentCyan) },
+            trailingIcon = {
+                if (uiState.searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchChange("") }) {
+                        Icon(Icons.Default.Close, "清除", tint = TextSecondary)
+                    }
+                }
+            },
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = PanelDark,
+                unfocusedContainerColor = PanelDark,
+                focusedBorderColor = AccentCyan,
+                unfocusedBorderColor = Color(0xFF2B3442),
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(StationCategory.entries) { category ->
+                val selected = uiState.selectedCategory == category
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectCategory(category) },
+                    label = {
+                        Text(
+                            text = category.label,
+                            fontSize = 15.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = PanelDark,
+                        labelColor = TextSecondary,
+                        selectedContainerColor = AccentCyan,
+                        selectedLabelColor = BgDark
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = selected,
+                        borderColor = Color(0xFF2B3442)
+                    )
+                )
+            }
+        }
+
+        if (uiState.filteredStations.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(PanelDark),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (uiState.isRefreshing) "正在載入台灣電台清單…" else "目前分類沒有符合的電台",
+                    color = TextSecondary,
+                    fontSize = 16.sp
+                )
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(gridColumns),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(uiState.filteredStations, key = { it.id }) { station ->
+                    val isSelected = uiState.currentStation?.id == station.id
+                    val isFav = station.id in uiState.favoriteIds
+                    StationCard(
+                        station = station,
+                        isSelected = isSelected,
+                        isFavorite = isFav,
+                        onClick = { onPlayStation(station) },
+                        onToggleFavorite = { onToggleFavorite(station.id) },
+                        onDeleteCustom = if (station.isCustom) {
+                            { onDeleteCustomStation(station.id) }
+                        } else null
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StationCard(
+    station: RadioStation,
+    isSelected: Boolean,
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDeleteCustom: (() -> Unit)?
+) {
+    Surface(
+        color = if (isSelected) CardActive else CardDark,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) AccentCyan else Color(0xFF2B3442)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(92.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = station.name,
+                    color = if (isSelected) AccentCyan else TextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "${station.category.label} · ${station.techBadge}",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onDeleteCustom != null) {
+                    IconButton(onClick = onDeleteCustom) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "刪除自訂電台",
+                            tint = Color(0xFFF85149)
+                        )
+                    }
+                }
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "收藏",
+                        tint = if (isFavorite) AccentAmber else TextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddCustomStationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PanelDark,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        title = { Text("新增自訂廣播串流", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("支援 HLS (.m3u8)、AAC、MP3 等網路電台串流網址。", fontSize = 13.sp)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("電台名稱") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("串流網址 (https://...)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(name, url) },
+                enabled = name.isNotBlank() && url.startsWith("http", ignoreCase = true)
+            ) {
+                Text("新增")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
+
+@Composable
+private fun SettingsDialog(
+    keepScreenOn: Boolean,
+    autoResumeOnBoot: Boolean,
+    stationCount: Int,
+    onKeepScreenOnChange: (Boolean) -> Unit,
+    onAutoResumeChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PanelDark,
+        titleContentColor = TextPrimary,
+        textContentColor = TextPrimary,
+        title = { Text("車機播放設定", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("前景時保持螢幕恆亮", fontWeight = FontWeight.SemiBold)
+                        Text("避免行車中螢幕休眠", color = TextSecondary, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = keepScreenOn,
+                        onCheckedChange = onKeepScreenOnChange,
+                        colors = SwitchDefaults.colors(checkedThumbColor = BgDark, checkedTrackColor = AccentCyan)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("車機開機自動續播", fontWeight = FontWeight.SemiBold)
+                        Text("發動車機時自動開啟並續播上次電台", color = TextSecondary, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = autoResumeOnBoot,
+                        onCheckedChange = onAutoResumeChange,
+                        colors = SwitchDefaults.colors(checkedThumbColor = BgDark, checkedTrackColor = AccentCyan)
+                    )
+                }
+                Text(
+                    text = "目前已載入 $stationCount 個電台（來源：Radio Browser 公開資料庫 + 自訂串流）。",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("完成") }
+        }
+    )
+}
