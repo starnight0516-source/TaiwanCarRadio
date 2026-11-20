@@ -18,12 +18,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import tw.carradio.app.MainActivity
 
-/**
- * v1.1 修正重點：
- * 1. 切換頻道時於 onMediaItemTransition 立即取消舊的重連排程並重置重試計數，避免舊電台重連干擾新電台。
- * 2. 改用標準 Chrome User-Agent 並允許跨協定轉址（HTTP <-> HTTPS），避免部分電台 CDN 阻擋。
- * 3. 重連前改以 seekToDefaultPosition() 回到直播最新時間點，避免卡在舊緩衝位置。
- */
 class RadioPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
@@ -60,7 +54,6 @@ class RadioPlaybackService : MediaSessionService() {
 
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                // 換台時立刻清除上一個頻道的重連排程，避免誤觸發或狀態衝突
                 reconnectAttempt = 0
                 cancelPendingReconnect()
             }

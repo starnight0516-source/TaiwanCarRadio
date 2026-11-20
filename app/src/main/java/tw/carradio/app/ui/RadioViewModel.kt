@@ -1,7 +1,16 @@
 package tw.carradio.app.ui
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ComponentName
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,8 +28,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tw.carradio.app.data.RadioRepository
+import tw.carradio.app.data.WeatherRepository
 import tw.carradio.app.model.RadioStation
 import tw.carradio.app.model.StationCategory
+import tw.carradio.app.model.WeatherInfo
 import tw.carradio.app.service.RadioPlaybackService
 
 enum class PlaybackStatus {
@@ -42,12 +53,19 @@ data class RadioUiState(
     val isRefreshing: Boolean = false,
     val statusMessage: String? = null,
     val keepScreenOn: Boolean = true,
-    val autoResumeOnBoot: Boolean = false
+    val autoResumeOnBoot: Boolean = false,
+    val weather: WeatherInfo? = null,
+    val isWeatherLoading: Boolean = false,
+    val weatherHint: String = "等待 GPS 定位…"
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = RadioRepository(application)
+    private val weatherRepository = WeatherRepository(application)
+    private val locationManager =
+        application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
     private val _uiState = MutableStateFlow(
         RadioUiState(
             favoriteIds = repository.getFavoriteIds(),
@@ -60,6 +78,20 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
     private var pendingAutoPlayLast = false
+    private var isLocationListening = false
+    private var lastWeatherLocation: Location? = null
+    private var lastWeatherFetchMs: Long = 0L
+
+    private val locationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            maybeFetchWeatherForLocation(location, force = false)
+        }
+
+        @Deprecated("Deprecated in Android API 29")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -100,6 +132,101 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     init {
         connectMediaController()
         loadInitialStations()
+        startGpsWeatherUpdates(forceRefresh = false)
+    }
+
+    fun hasLocationPermission(): Boolean {
+        val ctx = getApplication<Application>()
+        val fine = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startGpsWeatherUpdates(forceRefresh: Boolean = true) {
+        if (!hasLocationPermission()) {
+            _uiState.update { it.copy(weatherHint = "點此授權 GPS 定位顯示即時天氣") }
+            return
+        }
+
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER
+        )
+
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            runCatching {
+                if (locationManager.isProviderEnabled(provider)) {
+                    val loc = locationManager.getLastKnownLocation(provider)
+                    if (loc != null && (bestLocation == null || loc.time > bestLocation!!.time)) {
+                        bestLocation = loc
+                    }
+                }
+            }
+        }
+
+        if (bestLocation != null) {
+            maybeFetchWeatherForLocation(bestLocation!!, force = forceRefresh)
+        } else {
+            _uiState.update { it.copy(weatherHint = "正在取得車機 GPS 定位…") }
+        }
+
+        if (!isLocationListening) {
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                runCatching {
+                    if (locationManager.isProviderEnabled(provider)) {
+                        // 每 15 分鐘或行駛超過 3 公里自動更新所在地點天氣
+                        locationManager.requestLocationUpdates(
+                            provider,
+                            15 * 60 * 1000L,
+                            3000f,
+                            locationListener,
+                            Looper.getMainLooper()
+                        )
+                        isLocationListening = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun maybeFetchWeatherForLocation(location: Location, force: Boolean) {
+        val now = System.currentTimeMillis()
+        val prev = lastWeatherLocation
+        val movedMeters = prev?.distanceTo(location) ?: Float.MAX_VALUE
+        val elapsedMs = now - lastWeatherFetchMs
+
+        if (!force && prev != null && movedMeters < 2500f && elapsedMs < 10 * 60 * 1000L) {
+            return
+        }
+
+        lastWeatherLocation = location
+        lastWeatherFetchMs = now
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isWeatherLoading = true) }
+            val result = weatherRepository.fetchWeather(location.latitude, location.longitude)
+            result.onSuccess { info ->
+                _uiState.update {
+                    it.copy(
+                        weather = info,
+                        isWeatherLoading = false,
+                        weatherHint = ""
+                    )
+                }
+            }.onFailure {
+                _uiState.update {
+                    it.copy(
+                        isWeatherLoading = false,
+                        weatherHint = if (it.weather == null) "天氣更新失敗，點此重試" else ""
+                    )
+                }
+            }
+        }
     }
 
     fun requestAutoPlayLast() {
@@ -247,13 +374,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             )
             .build()
 
-    /**
-     * v1.1 換台核心修正：
-     * 1. 先 stop() + clearMediaItems() 徹底釋放舊串流緩衝與 HTTP 連線。
-     * 2. 僅傳遞「上一台／目前／下一台」3 筆輕量清單（避免 200+ 筆清單造成車機 Binder IPC 過載或卡死），
-     *    同時保有方向盤上一首／下一首原生支援。
-     * 3. 起始位置改用 C.TIME_UNSET，讓直播串流直接從最新 live edge 開始播放。
-     */
     fun playStation(station: RadioStation) {
         val controller = mediaController ?: return
         repository.saveLastStationId(station.id)
@@ -364,6 +484,10 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        if (isLocationListening) {
+            runCatching { locationManager.removeUpdates(locationListener) }
+            isLocationListening = false
+        }
         mediaController?.removeListener(playerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onCleared()

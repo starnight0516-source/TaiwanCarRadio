@@ -1,7 +1,5 @@
-# 台灣車機廣播（TaiwanCarRadio）v1.1.0
+# 台灣車機廣播（TaiwanCarRadio）v1.2.0
 
-## v1.1.0 實車測試修正內容
-- **修正換台連不上問題**：切換電台時先完整釋放舊串流連線（`stop()` + `clearMediaItems()`），改用 3 筆輕量滑動視窗避免車機 Binder IPC 過載、改以 `C.TIME_UNSET` 從直播最新時間點起播，並於換台時立即清除舊重連排程與改用標準瀏覽器 `User-Agent`。
-- **直立大螢幕車機專屬排版**：改為「寬 > 高」才啟用左右雙欄；直立大螢幕自動使用上方精簡控制面板＋下方 2 欄電台卡片，左上設定鍵不再被擠壓。
-- **避開底部車機 Dock**：加入 `systemBarsPadding` 與底部 72dp 安全留白。
-- **清理 `UNKNOWN` 格式字樣**：自動改顯示 `LIVE`。
+## v1.2.0 新增與修正內容
+- **GPS 所在地即時天氣列**：使用車機原生 `LocationManager` GPS 定位（不依賴 Google Play 服務），自動查詢免金鑰 [Open-Meteo](https://veri-glow.com/open-meteo.com/en/docs/) 即時氣溫、天氣狀態、高低溫、降雨機率與濕度，並透過 Android `Geocoder` 與 [BigDataCloud](https://www.bigdatacloud.com/blog/convert-getcurrentposition-free-reversegeocoding-api) 雙層轉換顯示台灣縣市行政區名稱；行駛滿 3 公里或每 15 分鐘自動更新，也可點天氣列手動刷新。
+- **包含 v1.1.0 全部修正**：換台徹底釋放舊連線與 3 筆輕量視窗（解決換台連不上）、直立大螢幕上下排版、底部 72dp 安全留白避開車機工具列。

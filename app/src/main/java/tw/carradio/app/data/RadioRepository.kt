@@ -145,7 +145,7 @@ class RadioRepository(private val context: Context) {
                         requestMethod = "GET"
                         connectTimeout = 8000
                         readTimeout = 12000
-                        setRequestProperty("User-Agent", "TaiwanCarRadio/1.1 (Android Car HeadUnit)")
+                        setRequestProperty("User-Agent", "TaiwanCarRadio/1.2 (Android Car HeadUnit)")
                         setRequestProperty("Accept", "application/json")
                     }
                     try {

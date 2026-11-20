@@ -25,11 +25,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Grain
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
@@ -38,6 +43,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Thunderstorm
+import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,11 +78,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tw.carradio.app.model.RadioStation
 import tw.carradio.app.model.StationCategory
+import tw.carradio.app.model.WeatherInfo
 
 private val BgDark = Color(0xFF0D1117)
 private val PanelDark = Color(0xFF161B22)
 private val CardDark = Color(0xFF1F2733)
 private val CardActive = Color(0xFF13334C)
+private val WeatherBg = Color(0xFF132234)
 private val AccentCyan = Color(0xFF00D2FF)
 private val AccentAmber = Color(0xFFFFB300)
 private val TextPrimary = Color(0xFFF0F6FC)
@@ -91,13 +102,13 @@ fun CarRadioScreen(
     onSearchChange: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onRefresh: () -> Unit,
+    onRefreshWeather: () -> Unit,
     onAddCustomStation: (String, String) -> Unit,
     onDeleteCustomStation: (String) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
     onAutoResumeChange: (Boolean) -> Unit
 ) {
     val configuration = LocalConfiguration.current
-    // 僅在真正「寬 > 高」的橫屏車機使用左右雙欄；直立大螢幕車機自動切換上下排版
     val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
 
     var showAddDialog by remember { mutableStateOf(false) }
@@ -123,6 +134,7 @@ fun CarRadioScreen(
                     onPrevious = onPrevious,
                     onToggleFavorite = onToggleFavorite,
                     onRefresh = onRefresh,
+                    onRefreshWeather = onRefreshWeather,
                     onOpenAddDialog = { showAddDialog = true },
                     onOpenSettings = { showSettingsDialog = true },
                     modifier = Modifier
@@ -143,7 +155,6 @@ fun CarRadioScreen(
                 )
             }
         } else {
-            // 直立大螢幕車機／手機：上方精簡控制面板＋下方 2 欄電台卡片（底部預留車機 Dock 安全邊距）
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -157,6 +168,7 @@ fun CarRadioScreen(
                     onPrevious = onPrevious,
                     onToggleFavorite = onToggleFavorite,
                     onRefresh = onRefresh,
+                    onRefreshWeather = onRefreshWeather,
                     onOpenAddDialog = { showAddDialog = true },
                     onOpenSettings = { showSettingsDialog = true },
                     modifier = Modifier.fillMaxWidth()
@@ -200,6 +212,132 @@ fun CarRadioScreen(
 }
 
 @Composable
+private fun WeatherStrip(
+    weather: WeatherInfo?,
+    isLoading: Boolean,
+    hint: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        color = WeatherBg,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color(0xFF233B57)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            if (weather != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = weatherIconFor(weather.weatherCode, weather.isDay),
+                        contentDescription = weather.conditionLabel,
+                        tint = if (weather.weatherCode <= 1) AccentAmber else AccentCyan,
+                        modifier = Modifier.size(30.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "${weather.temperatureC}°C",
+                        color = TextPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = AccentCyan,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                text = "${weather.locationName} · ${weather.conditionLabel}",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        val subParts = mutableListOf<String>()
+                        if (weather.lowC != null && weather.highC != null) {
+                            subParts.add("${weather.lowC}°~${weather.highC}°")
+                        }
+                        if (weather.rainChancePercent != null) {
+                            subParts.add("降雨 ${weather.rainChancePercent}%")
+                        }
+                        subParts.add("濕度 ${weather.humidityPercent}%")
+                        subParts.add("${weather.updatedTimeText} 更新")
+                        Text(
+                            text = subParts.joinToString(" · "),
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = hint.ifBlank { "等待 GPS 定位即時天氣…" },
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = AccentCyan
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "重新定位天氣",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun weatherIconFor(code: Int, isDay: Boolean): ImageVector = when (code) {
+    0, 1 -> if (isDay) Icons.Default.WbSunny else Icons.Default.NightsStay
+    2, 3, 45, 48 -> Icons.Default.Cloud
+    51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82 -> Icons.Default.WaterDrop
+    71, 73, 75, 77, 85, 86 -> Icons.Default.AcUnit
+    95, 96, 99 -> Icons.Default.Thunderstorm
+    else -> Icons.Default.Grain
+}
+
+@Composable
 private fun PortraitNowPlayingHeader(
     uiState: RadioUiState,
     onTogglePlayPause: () -> Unit,
@@ -207,6 +345,7 @@ private fun PortraitNowPlayingHeader(
     onPrevious: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onRefresh: () -> Unit,
+    onRefreshWeather: () -> Unit,
     onOpenAddDialog: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -223,10 +362,9 @@ private fun PortraitNowPlayingHeader(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 第一列：品牌名稱 + 狀態標籤 + 完整工具按鈕（不擠壓）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -270,7 +408,14 @@ private fun PortraitNowPlayingHeader(
                 }
             }
 
-            // 第二列：左方目前播放電台資訊 + 右方大控制鍵
+            // GPS 所在地即時天氣列（點擊可立即刷新定位與天氣）
+            WeatherStrip(
+                weather = uiState.weather,
+                isLoading = uiState.isWeatherLoading,
+                hint = uiState.weatherHint,
+                onClick = onRefreshWeather
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -280,26 +425,26 @@ private fun PortraitNowPlayingHeader(
                     Text(
                         text = current?.name ?: "請由下方選擇電台",
                         color = TextPrimary,
-                        fontSize = 23.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         text = current?.let { "${it.category.label} · ${it.techBadge}" }
                             ?: "支援背景播放與方向盤切台",
                         color = TextSecondary,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     if (!uiState.statusMessage.isNullOrBlank()) {
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(3.dp))
                         Text(
                             text = uiState.statusMessage,
                             color = AccentAmber,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -315,14 +460,14 @@ private fun PortraitNowPlayingHeader(
                             onClick = { onToggleFavorite(current.id) },
                             shape = CircleShape,
                             color = if (isFav) Color(0xFF3A2D0B) else CardDark,
-                            modifier = Modifier.size(54.dp)
+                            modifier = Modifier.size(52.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = "收藏",
                                     tint = if (isFav) AccentAmber else TextPrimary,
-                                    modifier = Modifier.size(26.dp)
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
@@ -331,30 +476,30 @@ private fun PortraitNowPlayingHeader(
                         onClick = onPrevious,
                         shape = CircleShape,
                         color = CardDark,
-                        modifier = Modifier.size(56.dp)
+                        modifier = Modifier.size(54.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(32.dp))
+                            Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(30.dp))
                         }
                     }
                     Surface(
                         onClick = onTogglePlayPause,
                         shape = CircleShape,
                         color = AccentCyan,
-                        modifier = Modifier.size(70.dp)
+                        modifier = Modifier.size(68.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            PlayButtonContent(uiState.playbackStatus, iconSize = 38)
+                            PlayButtonContent(uiState.playbackStatus, iconSize = 36)
                         }
                     }
                     Surface(
                         onClick = onNext,
                         shape = CircleShape,
                         color = CardDark,
-                        modifier = Modifier.size(56.dp)
+                        modifier = Modifier.size(54.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(32.dp))
+                            Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(30.dp))
                         }
                     }
                 }
@@ -371,6 +516,7 @@ private fun LandscapeNowPlayingPanel(
     onPrevious: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onRefresh: () -> Unit,
+    onRefreshWeather: () -> Unit,
     onOpenAddDialog: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -387,63 +533,75 @@ private fun LandscapeNowPlayingPanel(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
+                .padding(18.dp),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Radio,
-                        contentDescription = null,
-                        tint = AccentCyan,
-                        modifier = Modifier.size(26.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "台灣車機廣播",
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onRefresh) {
-                        if (uiState.isRefreshing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = AccentCyan
-                            )
-                        } else {
-                            Icon(Icons.Default.Refresh, "更新清單", tint = TextSecondary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Radio,
+                            contentDescription = null,
+                            tint = AccentCyan,
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "台灣車機廣播",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        IconButton(onClick = onRefresh) {
+                            if (uiState.isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AccentCyan
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, "更新清單", tint = TextSecondary)
+                            }
+                        }
+                        IconButton(onClick = onOpenAddDialog) {
+                            Icon(Icons.Default.Add, "新增自訂電台", tint = TextSecondary)
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Default.Settings, "設定", tint = TextSecondary)
                         }
                     }
-                    IconButton(onClick = onOpenAddDialog) {
-                        Icon(Icons.Default.Add, "新增自訂電台", tint = TextSecondary)
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, "設定", tint = TextSecondary)
-                    }
                 }
+
+                WeatherStrip(
+                    weather = uiState.weather,
+                    isLoading = uiState.isWeatherLoading,
+                    hint = uiState.weatherHint,
+                    onClick = onRefreshWeather
+                )
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 StatusPill(uiState.playbackStatus)
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     text = current?.name ?: "請由右側選擇電台",
                     color = TextPrimary,
-                    fontSize = 26.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -458,7 +616,7 @@ private fun LandscapeNowPlayingPanel(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!uiState.statusMessage.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = uiState.statusMessage,
                         color = AccentAmber,
@@ -478,10 +636,10 @@ private fun LandscapeNowPlayingPanel(
                     onClick = onPrevious,
                     shape = CircleShape,
                     color = CardDark,
-                    modifier = Modifier.size(68.dp)
+                    modifier = Modifier.size(64.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(38.dp))
+                        Icon(Icons.Default.SkipPrevious, "上一台", tint = TextPrimary, modifier = Modifier.size(36.dp))
                     }
                 }
 
@@ -489,10 +647,10 @@ private fun LandscapeNowPlayingPanel(
                     onClick = onTogglePlayPause,
                     shape = CircleShape,
                     color = AccentCyan,
-                    modifier = Modifier.size(88.dp)
+                    modifier = Modifier.size(84.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        PlayButtonContent(uiState.playbackStatus, iconSize = 48)
+                        PlayButtonContent(uiState.playbackStatus, iconSize = 46)
                     }
                 }
 
@@ -500,16 +658,15 @@ private fun LandscapeNowPlayingPanel(
                     onClick = onNext,
                     shape = CircleShape,
                     color = CardDark,
-                    modifier = Modifier.size(68.dp)
+                    modifier = Modifier.size(64.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(38.dp))
+                        Icon(Icons.Default.SkipNext, "下一台", tint = TextPrimary, modifier = Modifier.size(36.dp))
                     }
                 }
             }
 
             if (current != null) {
-                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = { onToggleFavorite(current.id) },
                     colors = ButtonDefaults.buttonColors(
@@ -519,17 +676,17 @@ private fun LandscapeNowPlayingPanel(
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(48.dp)
                 ) {
                     Icon(
                         imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = if (isFav) "已加入我的最愛" else "加入我的最愛",
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -672,7 +829,6 @@ private fun StationBrowserPanel(
                 columns = GridCells.Fixed(gridColumns),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                // 底部預留 72dp 避開各廠牌車機常駐底部工具列
                 contentPadding = PaddingValues(bottom = 72.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -827,7 +983,7 @@ private fun SettingsDialog(
         containerColor = PanelDark,
         titleContentColor = TextPrimary,
         textContentColor = TextPrimary,
-        title = { Text("車機播放設定（v1.1.0）", fontWeight = FontWeight.Bold) },
+        title = { Text("車機播放設定（v1.2.0）", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(
@@ -861,7 +1017,7 @@ private fun SettingsDialog(
                     )
                 }
                 Text(
-                    text = "目前已載入 $stationCount 個電台（來源：Radio Browser 公開資料庫 + 自訂串流）。",
+                    text = "已載入 $stationCount 個電台；即時天氣由車機 GPS 搭配 Open-Meteo 免費即時氣象更新（每 15 分鐘或移動 3 公里自動刷新）。",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
