@@ -14,59 +14,85 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * 使用免費免金鑰之 Open-Meteo 即時天氣 API + 雙層反向地理編碼（Android 內建 Geocoder 優先，無 GMS 車機自動備援 BigDataCloud）。
+ * v1.3 雙保險天氣定位引擎：
+ * 1. GPS 有座標時直接使用精準 GPS 經緯度 + 行政區名稱。
+ * 2. 若車機／CarPlay 盒子在地下室或尚未透傳 GPS，立即透過免金鑰 HTTPS IP 定位（ipwho.is / geojs.io）
+ *    秒速顯示所在縣市即時天氣，等 GPS 鎖定後自動升級為精準 GPS 行政區！
  */
 class WeatherRepository(private val context: Context) {
 
-    suspend fun fetchWeather(latitude: Double, longitude: Double): Result<WeatherInfo> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val weatherUrl =
-                    "https://api.open-meteo.com/v1/forecast" +
-                        "?latitude=$latitude&longitude=$longitude" +
-                        "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day" +
-                        "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
-                        "&timezone=auto&forecast_days=1"
+    suspend fun fetchWeather(
+        latitude: Double,
+        longitude: Double,
+        sourceLabel: String = "GPS"
+    ): Result<WeatherInfo> = withContext(Dispatchers.IO) {
+        runCatching {
+            val weatherUrl =
+                "https://api.open-meteo.com/v1/forecast" +
+                    "?latitude=$latitude&longitude=$longitude" +
+                    "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day" +
+                    "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+                    "&timezone=auto&forecast_days=1"
 
-                val body = httpGet(weatherUrl)
-                val root = JSONObject(body)
-                val current = root.getJSONObject("current")
-                val daily = root.optJSONObject("daily")
+            val body = httpGet(weatherUrl)
+            val root = JSONObject(body)
+            val current = root.getJSONObject("current")
+            val daily = root.optJSONObject("daily")
 
-                val temp = current.optDouble("temperature_2m", Double.NaN)
-                require(!temp.isNaN()) { "天氣資料缺少氣溫欄位" }
+            val temp = current.optDouble("temperature_2m", Double.NaN)
+            require(!temp.isNaN()) { "天氣資料缺少氣溫欄位" }
 
-                val apparent = current.optDouble("apparent_temperature", temp)
-                val humidity = current.optInt("relative_humidity_2m", 0)
-                val code = current.optInt("weather_code", 0)
-                val isDay = current.optInt("is_day", 1) == 1
+            val apparent = current.optDouble("apparent_temperature", temp)
+            val humidity = current.optInt("relative_humidity_2m", 0)
+            val code = current.optInt("weather_code", 0)
+            val isDay = current.optInt("is_day", 1) == 1
 
-                val highC = daily?.optJSONArray("temperature_2m_max")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt()
-                val lowC = daily?.optJSONArray("temperature_2m_min")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt()
-                val rainChance = daily?.optJSONArray("precipitation_probability_max")?.optInt(0)
+            val highC = daily?.optJSONArray("temperature_2m_max")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt()
+            val lowC = daily?.optJSONArray("temperature_2m_min")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt()
+            val rainChance = daily?.optJSONArray("precipitation_probability_max")?.optInt(0)
 
-                val locationName = resolvePlaceName(latitude, longitude)
-                val timeStr = SimpleDateFormat("HH:mm", Locale.TAIWAN).format(Date())
+            val locationName = resolvePlaceName(latitude, longitude)
+            val timeStr = SimpleDateFormat("HH:mm", Locale.TAIWAN).format(Date())
 
-                WeatherInfo(
-                    locationName = locationName,
-                    temperatureC = temp.roundToInt(),
-                    apparentTempC = apparent.roundToInt(),
-                    humidityPercent = humidity,
-                    conditionLabel = wmoCodeToChinese(code),
-                    weatherCode = code,
-                    isDay = isDay,
-                    highC = highC,
-                    lowC = lowC,
-                    rainChancePercent = rainChance,
-                    updatedTimeText = timeStr
-                )
-            }
+            WeatherInfo(
+                locationName = locationName,
+                sourceLabel = sourceLabel,
+                temperatureC = temp.roundToInt(),
+                apparentTempC = apparent.roundToInt(),
+                humidityPercent = humidity,
+                conditionLabel = wmoCodeToChinese(code),
+                weatherCode = code,
+                isDay = isDay,
+                highC = highC,
+                lowC = lowC,
+                rainChancePercent = rainChance,
+                updatedTimeText = timeStr
+            )
         }
+    }
+
+    suspend fun fetchFallbackIpCoordinates(): Result<Pair<Double, Double>> = withContext(Dispatchers.IO) {
+        runCatching {
+            // 1. ipwho.is (HTTPS, free, no API key)
+            runCatching {
+                val json = JSONObject(httpGet("https://ipwho.is/"))
+                if (json.optBoolean("success", false)) {
+                    val lat = json.optDouble("latitude", Double.NaN)
+                    val lon = json.optDouble("longitude", Double.NaN)
+                    if (!lat.isNaN() && !lon.isNaN()) return@runCatching Pair(lat, lon)
+                }
+            }
+            // 2. geojs.io fallback (HTTPS, free, no API key)
+            val geoJson = JSONObject(httpGet("https://get.geojs.io/v1/ip/geo.json"))
+            val lat = geoJson.optString("latitude").toDoubleOrNull()
+            val lon = geoJson.optString("longitude").toDoubleOrNull()
+            require(lat != null && lon != null) { "無法取得網路定位座標" }
+            Pair(lat, lon)
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun resolvePlaceName(lat: Double, lon: Double): String {
-        // 1. 優先嘗試系統內建 Geocoder
         runCatching {
             if (Geocoder.isPresent()) {
                 val geocoder = Geocoder(context, Locale.TRADITIONAL_CHINESE)
@@ -85,7 +111,6 @@ class WeatherRepository(private val context: Context) {
             }
         }
 
-        // 2. 車機若無 Google Geocoder 服務，自動備援 BigDataCloud 免費反向地理編碼
         runCatching {
             val url =
                 "https://api.bigdatacloud.net/data/reverse-geocode-client" +
@@ -108,7 +133,7 @@ class WeatherRepository(private val context: Context) {
             requestMethod = "GET"
             connectTimeout = 8000
             readTimeout = 10000
-            setRequestProperty("User-Agent", "TaiwanCarRadio/1.2 (Android Car HeadUnit)")
+            setRequestProperty("User-Agent", "TaiwanCarRadio/1.3 (Android Car HeadUnit)")
             setRequestProperty("Accept", "application/json")
         }
         return try {

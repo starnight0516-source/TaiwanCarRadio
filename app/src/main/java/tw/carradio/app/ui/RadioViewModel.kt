@@ -56,7 +56,7 @@ data class RadioUiState(
     val autoResumeOnBoot: Boolean = false,
     val weather: WeatherInfo? = null,
     val isWeatherLoading: Boolean = false,
-    val weatherHint: String = "等待 GPS 定位…"
+    val weatherHint: String = "正在取得即時天氣…"
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -79,12 +79,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private var mediaController: MediaController? = null
     private var pendingAutoPlayLast = false
     private var isLocationListening = false
-    private var lastWeatherLocation: Location? = null
+    private var lastGpsLocation: Location? = null
     private var lastWeatherFetchMs: Long = 0L
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            maybeFetchWeatherForLocation(location, force = false)
+            maybeFetchWeatherForGps(location, force = false)
         }
 
         @Deprecated("Deprecated in Android API 29")
@@ -132,7 +132,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     init {
         connectMediaController()
         loadInitialStations()
-        startGpsWeatherUpdates(forceRefresh = false)
+        startGpsWeatherUpdates(forceRefresh = true)
     }
 
     fun hasLocationPermission(): Boolean {
@@ -146,57 +146,91 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
 
     @SuppressLint("MissingPermission")
     fun startGpsWeatherUpdates(forceRefresh: Boolean = true) {
-        if (!hasLocationPermission()) {
-            _uiState.update { it.copy(weatherHint = "點此授權 GPS 定位顯示即時天氣") }
-            return
-        }
+        var gotGpsNow = false
 
-        val providers = listOf(
-            LocationManager.GPS_PROVIDER,
-            LocationManager.NETWORK_PROVIDER,
-            LocationManager.PASSIVE_PROVIDER
-        )
+        if (hasLocationPermission()) {
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER
+            )
 
-        var bestLocation: Location? = null
-        for (provider in providers) {
-            runCatching {
-                if (locationManager.isProviderEnabled(provider)) {
-                    val loc = locationManager.getLastKnownLocation(provider)
-                    if (loc != null && (bestLocation == null || loc.time > bestLocation!!.time)) {
-                        bestLocation = loc
+            var bestLocation: Location? = null
+            for (provider in providers) {
+                runCatching {
+                    if (locationManager.isProviderEnabled(provider)) {
+                        val loc = locationManager.getLastKnownLocation(provider)
+                        if (loc != null && (bestLocation == null || loc.time > bestLocation!!.time)) {
+                            bestLocation = loc
+                        }
+                    }
+                }
+            }
+
+            if (bestLocation != null) {
+                gotGpsNow = true
+                maybeFetchWeatherForGps(bestLocation!!, force = forceRefresh)
+            }
+
+            if (!isLocationListening) {
+                for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                    runCatching {
+                        if (locationManager.isProviderEnabled(provider)) {
+                            locationManager.requestLocationUpdates(
+                                provider,
+                                15 * 60 * 1000L,
+                                3000f,
+                                locationListener,
+                                Looper.getMainLooper()
+                            )
+                            isLocationListening = true
+                        }
                     }
                 }
             }
         }
 
-        if (bestLocation != null) {
-            maybeFetchWeatherForLocation(bestLocation!!, force = forceRefresh)
-        } else {
-            _uiState.update { it.copy(weatherHint = "正在取得車機 GPS 定位…") }
+        // 若車機尚未鎖定 GPS（如在室內停車或 CarPlay 盒子未透傳 GPS），立刻用網路定位顯示所在縣市天氣
+        if (!gotGpsNow) {
+            fetchWeatherViaIpFallback()
         }
+    }
 
-        if (!isLocationListening) {
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                runCatching {
-                    if (locationManager.isProviderEnabled(provider)) {
-                        // 每 15 分鐘或行駛超過 3 公里自動更新所在地點天氣
-                        locationManager.requestLocationUpdates(
-                            provider,
-                            15 * 60 * 1000L,
-                            3000f,
-                            locationListener,
-                            Looper.getMainLooper()
-                        )
-                        isLocationListening = true
+    private fun fetchWeatherViaIpFallback() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isWeatherLoading = true, weatherHint = "正在取得所在地即時天氣…") }
+            val coordsResult = weatherRepository.fetchFallbackIpCoordinates()
+            coordsResult.onSuccess { (lat, lon) ->
+                val result = weatherRepository.fetchWeather(lat, lon, sourceLabel = "網路定位")
+                result.onSuccess { info ->
+                    // 僅在尚未收到更精準的 GPS 天氣前套用網路定位天氣
+                    if (lastGpsLocation == null) {
+                        _uiState.update { it.copy(weather = info, isWeatherLoading = false, weatherHint = "") }
+                    } else {
+                        _uiState.update { it.copy(isWeatherLoading = false) }
                     }
+                }.onFailure {
+                    _uiState.update {
+                        it.copy(
+                            isWeatherLoading = false,
+                            weatherHint = if (it.weather == null) "天氣載入失敗，點此重試" else ""
+                        )
+                    }
+                }
+            }.onFailure {
+                _uiState.update {
+                    it.copy(
+                        isWeatherLoading = false,
+                        weatherHint = if (it.weather == null) "等待 GPS 定位（點此重試）" else ""
+                    )
                 }
             }
         }
     }
 
-    private fun maybeFetchWeatherForLocation(location: Location, force: Boolean) {
+    private fun maybeFetchWeatherForGps(location: Location, force: Boolean) {
         val now = System.currentTimeMillis()
-        val prev = lastWeatherLocation
+        val prev = lastGpsLocation
         val movedMeters = prev?.distanceTo(location) ?: Float.MAX_VALUE
         val elapsedMs = now - lastWeatherFetchMs
 
@@ -204,12 +238,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        lastWeatherLocation = location
+        lastGpsLocation = location
         lastWeatherFetchMs = now
 
         viewModelScope.launch {
             _uiState.update { it.copy(isWeatherLoading = true) }
-            val result = weatherRepository.fetchWeather(location.latitude, location.longitude)
+            val result = weatherRepository.fetchWeather(location.latitude, location.longitude, sourceLabel = "GPS")
             result.onSuccess { info ->
                 _uiState.update {
                     it.copy(

@@ -1,5 +1,5 @@
-# 台灣車機廣播（TaiwanCarRadio）v1.2.0
+# 台灣車機廣播（TaiwanCarRadio）v1.3.0
 
-## v1.2.0 新增與修正內容
-- **GPS 所在地即時天氣列**：使用車機原生 `LocationManager` GPS 定位（不依賴 Google Play 服務），自動查詢免金鑰 [Open-Meteo](https://veri-glow.com/open-meteo.com/en/docs/) 即時氣溫、天氣狀態、高低溫、降雨機率與濕度，並透過 Android `Geocoder` 與 [BigDataCloud](https://www.bigdatacloud.com/blog/convert-getcurrentposition-free-reversegeocoding-api) 雙層轉換顯示台灣縣市行政區名稱；行駛滿 3 公里或每 15 分鐘自動更新，也可點天氣列手動刷新。
-- **包含 v1.1.0 全部修正**：換台徹底釋放舊連線與 3 筆輕量視窗（解決換台連不上）、直立大螢幕上下排版、底部 72dp 安全留白避開車機工具列。
+## v1.3.0 專為 Foxtron CAVIRA 直立大螢幕優化
+- **直立座艙三段式版面**：頂部平視大字即時天氣卡 → 中央順暢 2 欄電台選台區 → 底部順手大按鈕播放控制座艙（預留車機底部 Dock 安全留白），並在標題顯示 `v1.3` 方便確認已安裝新版。
+- **天氣雙保險定位（GPS 優先＋網路定位秒速備援）**：就算車機在室內無 GPS 訊號或 CarPlay 安卓盒未透傳 GPS，仍會自動透過免金鑰 IP 定位（[ipwho.is](https://ipwhois.io/)／[GeoJS](https://www.geojs.io/docs/v1/endpoints/geo/)）秒速顯示所在地 [Open-Meteo](https://veri-glow.com/open-meteo.com/en/docs/) 即時天氣，一旦 GPS 鎖定即自動切換精準行政區。
